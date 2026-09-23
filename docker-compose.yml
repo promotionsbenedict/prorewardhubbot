@@ -1,0 +1,93 @@
+# Pro Reward Hub - production stack for a shared VPS.
+#   db  -> PostgreSQL 16, isolated on an internal-only network + persistent volume
+#   app -> Next.js standalone server (built from ./Dockerfile)
+#
+# TLS/HTTPS is terminated by the EXISTING Caddy container
+# (prochannelhelpbot-caddy-1) that already owns ports 80/443 on this VPS.
+# Pro Reward Hub does NOT run its own Caddy and does NOT publish 80/443.
+# The app joins the existing `prochannelhelpbot_default` network under the
+# alias `prorewardhub-app`, which the shared Caddy reverse-proxies to.
+#
+# All secrets come from the .env file next to this compose file. Copy
+# .env.example to .env and fill it in before the first `docker compose up`.
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # Runs ONLY on first init of an empty data volume.
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    # Isolated: only reachable by the app on Pro Reward Hub's internal network.
+    networks:
+      - internal
+    expose:
+      - "5432"
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        # Build-time (inlined into the client bundle). Must be passed here,
+        # not only as a runtime env var.
+        NEXT_PUBLIC_TELEGRAM_BOT_USERNAME: ${NEXT_PUBLIC_TELEGRAM_BOT_USERNAME}
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      # Listen on all interfaces inside the container on port 3000.
+      HOSTNAME: "0.0.0.0"
+      PORT: "3000"
+      # App talks to the db service over the internal Docker network.
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL}
+      RESEND_API_KEY: ${RESEND_API_KEY}
+      RESEND_EMAIL_DOMAIN: ${RESEND_EMAIL_DOMAIN}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      NEXT_PUBLIC_TELEGRAM_BOT_USERNAME: ${NEXT_PUBLIC_TELEGRAM_BOT_USERNAME}
+    healthcheck:
+      test:
+        ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+    networks:
+      # Internal network: reach the isolated Postgres.
+      internal:
+      # Shared proxy network: the existing Caddy reaches the app here.
+      shared_proxy:
+        aliases:
+          - prorewardhub-app
+    # Only reachable inside Docker networks; ports 80/443/3000 are NOT
+    # published to the host. The shared Caddy proxies to prorewardhub-app:3000.
+    expose:
+      - "3000"
+
+networks:
+  # Private network for app <-> db, created and owned by this compose project.
+  internal:
+    driver: bridge
+  # Pre-existing network created by the ProChannelHelpBot stack. Declared
+  # external so Compose attaches to it instead of creating a new one.
+  shared_proxy:
+    external: true
+    name: prochannelhelpbot_default
+
+volumes:
+  pgdata:
