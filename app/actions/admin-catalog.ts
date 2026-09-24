@@ -53,7 +53,9 @@ export async function saveMission(formData: FormData): Promise<ActionResult> {
     return { ok: false, message: "Title and description are required." }
   }
 
-  const durationRaw = str(formData.get("durationSeconds"))
+  // The mission.durationSeconds column is NOT NULL. Missing, empty, or invalid
+  // input normalizes to 0; valid positive durations are preserved.
+  const durationSeconds = Math.max(0, int(formData.get("durationSeconds")))
   const values = {
     type: str(formData.get("type")) || "custom",
     title,
@@ -63,7 +65,7 @@ export async function saveMission(formData: FormData): Promise<ActionResult> {
     required: str(formData.get("required")) === "on",
     cta: str(formData.get("cta")) || "Start",
     verification: str(formData.get("verification")) || "instant",
-    durationSeconds: durationRaw ? int(formData.get("durationSeconds")) : null,
+    durationSeconds,
     sortOrder: int(formData.get("sortOrder")),
     active: str(formData.get("active")) === "on",
   }

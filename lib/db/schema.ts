@@ -130,7 +130,7 @@ export const mission = pgTable("mission", {
   required: boolean("required").notNull().default(false),
   cta: text("cta").notNull().default("Start"),
   verification: text("verification").notNull().default("instant"),
-  durationSeconds: integer("durationSeconds"),
+  durationSeconds: integer("durationSeconds").notNull().default(0),
   sortOrder: integer("sortOrder").notNull().default(0),
   active: boolean("active").notNull().default(true),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
