@@ -9,7 +9,9 @@ import {
 } from "@/lib/telegram"
 
 function fail(request: Request, reason: string) {
-  const url = new URL("/login", request.url)
+console.error("[Telegram Login Failed]", reason)
+
+  const url = new URL("/login", process.env.BETTER_AUTH_URL!)
   url.searchParams.set("error", reason)
   return NextResponse.redirect(url)
 }
@@ -22,6 +24,13 @@ export async function GET(request: Request) {
   if (!botToken) return fail(request, "telegram_unavailable")
 
   const params = Object.fromEntries(new URL(request.url).searchParams.entries())
+console.log("[Telegram Debug]", {
+  keys: Object.keys(params),
+  hasId: !!params.id,
+  hasHash: !!params.hash,
+  hasAuthDate: !!params.auth_date,
+  authDate: params.auth_date,
+})
   if (!params.id || !params.hash || !params.auth_date) {
     return fail(request, "telegram_invalid")
   }
@@ -65,7 +74,9 @@ export async function GET(request: Request) {
     return fail(request, "telegram_failed")
   }
 
-  const redirect = NextResponse.redirect(new URL("/app", request.url))
+  const redirect = NextResponse.redirect(
+  new URL("/app", process.env.BETTER_AUTH_URL!)
+)
   const setCookie = authResponse.headers.getSetCookie()
   for (const cookie of setCookie) {
     redirect.headers.append("set-cookie", cookie)

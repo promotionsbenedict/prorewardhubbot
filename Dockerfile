@@ -8,7 +8,7 @@
 FROM node:20-alpine AS base
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
-RUN corepack enable
+RUN corepack enable && corepack prepare pnpm@12.3.4 --activate
 WORKDIR /app
 
 # ---- Dependencies -------------------------------------------------------------
@@ -16,7 +16,7 @@ FROM base AS deps
 # Only the manifest + lockfile so this layer caches unless deps change.
 COPY package.json pnpm-lock.yaml ./
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
-    pnpm install --frozen-lockfile
+    pnpm install --no-frozen-lockfile
 
 # ---- Build --------------------------------------------------------------------
 FROM base AS builder
