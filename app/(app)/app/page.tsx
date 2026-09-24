@@ -6,9 +6,9 @@ import {
   CommunityDropCard,
   FeaturedMissionCard,
   StreakCard,
-  SurpriseDropBanner,
 } from "@/components/dashboard/home-widgets"
-import { getDashboardData } from "@/lib/dashboard"
+import { getCommunityDrop, getDashboardData } from "@/lib/dashboard"
+import { getStreakMilestones } from "@/lib/catalog"
 
 export const metadata: Metadata = {
   title: "Home",
@@ -16,7 +16,11 @@ export const metadata: Metadata = {
 }
 
 export default async function AppHomePage() {
-  const { user, missions, activity } = await getDashboardData()
+  const [{ user, missions, activity }, communityDrop, streakMilestones] = await Promise.all([
+    getDashboardData(),
+    getCommunityDrop(),
+    getStreakMilestones(),
+  ])
 
   return (
     <div className="space-y-6">
@@ -25,16 +29,15 @@ export default async function AppHomePage() {
         <h1 className="font-display text-2xl font-bold tracking-tight text-foreground">{user.name.split(" ")[0]}</h1>
       </div>
 
-      <SurpriseDropBanner />
       <StatTiles user={user} />
       <DailyDropCard missions={missions} />
 
       <div className="grid gap-6 lg:grid-cols-2">
         <FeaturedMissionCard />
-        <StreakCard streak={user.streak} />
+        <StreakCard streak={user.streak} milestones={streakMilestones} />
       </div>
 
-      <CommunityDropCard />
+      <CommunityDropCard drop={communityDrop} />
       <ActivityFeed activity={activity} />
     </div>
   )

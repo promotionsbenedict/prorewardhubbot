@@ -7,14 +7,18 @@ import { TopBar } from "@/components/dashboard/top-bar"
 import { BottomNav, SideNav } from "@/components/dashboard/dashboard-nav"
 import { LevelBadge } from "@/components/dashboard/level-badge"
 import { auth } from "@/lib/auth"
-import { getDashboardData } from "@/lib/dashboard"
+import { getDashboardData, getNotifications } from "@/lib/dashboard"
 import { getAdminContext } from "@/lib/admin"
 
 export default async function AppLayout({ children }: { children: ReactNode }) {
   const session = await auth.api.getSession({ headers: await headers() })
   if (!session?.user) redirect("/login")
 
-  const [{ user }, adminCtx] = await Promise.all([getDashboardData(), getAdminContext()])
+  const [{ user }, adminCtx, notifications] = await Promise.all([
+    getDashboardData(),
+    getAdminContext(),
+    getNotifications(),
+  ])
 
   return (
     <div className="min-h-dvh md:grid md:grid-cols-[248px_1fr]">
@@ -29,7 +33,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
       </aside>
 
       <div className="flex min-h-dvh flex-col">
-        <TopBar user={user} isAdmin={adminCtx.isAdmin} />
+        <TopBar user={user} isAdmin={adminCtx.isAdmin} notifications={notifications} />
         <main className="flex-1 px-4 pb-24 pt-5 sm:px-6 md:pb-8">
           <div className="mx-auto w-full max-w-3xl">{children}</div>
         </main>

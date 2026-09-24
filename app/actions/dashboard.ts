@@ -1,13 +1,14 @@
 "use server"
 
-import { and, eq, gte } from "drizzle-orm"
+import { and, count, eq, gte } from "drizzle-orm"
 import { headers } from "next/headers"
 import { revalidatePath } from "next/cache"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { activityLog, missionCompletion, profile, redemption } from "@/lib/db/schema"
 import { makeReferralCode } from "@/lib/dashboard"
-import { dailyDrop, rewards as rewardCatalog } from "@/lib/data"
+import { getMissionById } from "@/lib/catalog"
+import { rewards as rewardCatalog } from "@/lib/data"
 
 async function requireSessionUser() {
   const session = await auth.api.getSession({ headers: await headers() })
@@ -44,7 +45,7 @@ export type ActionResult = { ok: boolean; message?: string }
 
 export async function completeMission(missionId: string): Promise<ActionResult> {
   const sessionUser = await requireSessionUser()
-  const mission = dailyDrop.missions.find((m) => m.id === missionId)
+  const mission = await getMissionById(missionId)
   if (!mission) return { ok: false, message: "Unknown mission" }
 
   const prof = await ensureProfile(sessionUser.id, sessionUser.name)
@@ -99,9 +100,69 @@ export async function completeMission(missionId: string): Promise<ActionResult> 
     amount: `+${mission.points}`,
   })
 
+  // Credit the referrer when this member crosses a referral tier. Completions
+  // only ever increase, so the exact-count checks fire once each.
+  if (prof.referredBy) {
+    const totals = await db
+      .select({ value: count() })
+      .from(missionCompletion)
+      .where(eq(missionCompletion.userId, sessionUser.id))
+    const totalCompletions = Number(totals[0]?.value ?? 0)
+    if (totalCompletions === 1) {
+      await creditReferrer(prof.referredBy, 200, `${sessionUser.name} became active`)
+    } else if (totalCompletions === 3) {
+      await creditReferrer(prof.referredBy, 200, `${sessionUser.name} qualified`)
+    }
+  }
+
   revalidatePath("/app")
   revalidatePath("/app/missions")
   revalidatePath("/app/profile")
+  return { ok: true }
+}
+
+async function creditReferrer(referrerUserId: string, points: number, title: string) {
+  const rows = await db.select().from(profile).where(eq(profile.userId, referrerUserId)).limit(1)
+  if (!rows.length) return
+  await db
+    .update(profile)
+    .set({ points: rows[0].points + points })
+    .where(eq(profile.userId, referrerUserId))
+  await db.insert(activityLog).values({
+    userId: referrerUserId,
+    icon: "referral",
+    title,
+    meta: "Referral bonus",
+    amount: `+${points}`,
+  })
+  revalidatePath("/app")
+  revalidatePath("/app/invite")
+}
+
+// Links the current (newly signed-up) user to the referrer that owns `code`.
+// Safe to call more than once; it is a no-op if a referrer is already set,
+// the code is unknown, or the code belongs to the caller.
+export async function claimReferral(code: string): Promise<ActionResult> {
+  const trimmed = (code || "").trim().toUpperCase()
+  if (!trimmed) return { ok: false }
+
+  let sessionUser
+  try {
+    sessionUser = await requireSessionUser()
+  } catch {
+    return { ok: false }
+  }
+
+  const prof = await ensureProfile(sessionUser.id, sessionUser.name)
+  if (prof.referredBy) return { ok: true }
+  if (trimmed === prof.referralCode.toUpperCase()) return { ok: false }
+
+  const rows = await db.select().from(profile).where(eq(profile.referralCode, trimmed)).limit(1)
+  const referrer = rows[0]
+  if (!referrer || referrer.userId === sessionUser.id) return { ok: false }
+
+  await db.update(profile).set({ referredBy: referrer.userId }).where(eq(profile.userId, sessionUser.id))
+  await creditReferrer(referrer.userId, 100, `${sessionUser.name} joined with your link`)
   return { ok: true }
 }
 

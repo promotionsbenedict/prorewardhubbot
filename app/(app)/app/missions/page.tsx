@@ -1,6 +1,6 @@
 import type { Metadata } from "next"
 import { MissionCard } from "@/components/dashboard/mission-card"
-import { FeaturedMissionCard, SurpriseDropBanner } from "@/components/dashboard/home-widgets"
+import { FeaturedMissionCard } from "@/components/dashboard/home-widgets"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { getDashboardData } from "@/lib/dashboard"
 
@@ -25,7 +25,6 @@ export default async function MissionsPage() {
         </p>
       </div>
 
-      <SurpriseDropBanner />
       <FeaturedMissionCard />
 
       <Tabs defaultValue="all" className="w-full">
