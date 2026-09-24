@@ -1,10 +1,10 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Check, Copy, Gift, Share2, UserCheck, Users } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
-import { referralStats, referrals } from "@/lib/data"
+import type { ReferralData } from "@/lib/dashboard"
 import type { Referral } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
@@ -14,9 +14,21 @@ const statusStyle: Record<Referral["status"], string> = {
   Qualified: "bg-success/15 text-success",
 }
 
-export function InviteContent({ referralCode }: { referralCode: string }) {
+export function InviteContent({
+  referralCode,
+  referrals,
+  stats,
+}: {
+  referralCode: string
+  referrals: ReferralData["referrals"]
+  stats: ReferralData["stats"]
+}) {
   const [copied, setCopied] = useState(false)
-  const link = `proreward.app/join/${referralCode}`
+  const [link, setLink] = useState(`/join/${referralCode}`)
+
+  useEffect(() => {
+    setLink(`${window.location.origin}/join/${referralCode}`)
+  }, [referralCode])
 
   function copy() {
     navigator.clipboard.writeText(link).then(() => {
@@ -25,7 +37,7 @@ export function InviteContent({ referralCode }: { referralCode: string }) {
     })
   }
 
-  const mp = referralStats.missionProgress
+  const mp = stats.missionProgress
 
   return (
     <div className="space-y-6">
@@ -60,12 +72,12 @@ export function InviteContent({ referralCode }: { referralCode: string }) {
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {[
-          { label: "Total invites", value: referralStats.total, icon: Users, tone: "text-primary bg-primary/12" },
-          { label: "Active", value: referralStats.active, icon: UserCheck, tone: "text-success bg-success/12" },
-          { label: "Qualified", value: referralStats.qualified, icon: Check, tone: "text-accent bg-accent/12" },
+          { label: "Total invites", value: stats.total, icon: Users, tone: "text-primary bg-primary/12" },
+          { label: "Active", value: stats.active, icon: UserCheck, tone: "text-success bg-success/12" },
+          { label: "Qualified", value: stats.qualified, icon: Check, tone: "text-accent bg-accent/12" },
           {
             label: "Points earned",
-            value: referralStats.pointsEarned.toLocaleString(),
+            value: stats.pointsEarned.toLocaleString(),
             icon: Gift,
             tone: "text-warning bg-warning/12",
           },

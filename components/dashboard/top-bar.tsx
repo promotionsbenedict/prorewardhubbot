@@ -15,12 +15,20 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { Logo } from "@/components/logo"
-import { notifications } from "@/lib/data"
+import type { NotificationItem } from "@/lib/types"
 import type { LiveUser } from "@/lib/dashboard"
 import { authClient } from "@/lib/auth-client"
 import { cn } from "@/lib/utils"
 
-export function TopBar({ user, isAdmin = false }: { user: LiveUser; isAdmin?: boolean }) {
+export function TopBar({
+  user,
+  isAdmin = false,
+  notifications = [],
+}: {
+  user: LiveUser
+  isAdmin?: boolean
+  notifications?: NotificationItem[]
+}) {
   const router = useRouter()
   const unread = notifications.filter((n) => n.unread).length
 
@@ -67,21 +75,27 @@ export function TopBar({ user, isAdmin = false }: { user: LiveUser; isAdmin?: bo
                 </DropdownMenuLabel>
               </DropdownMenuGroup>
               <DropdownMenuSeparator />
-              {notifications.slice(0, 5).map((n) => (
-                <DropdownMenuItem key={n.id} className="flex flex-col items-start gap-0.5 py-2.5">
-                  <div className="flex w-full items-center gap-2">
-                    <span
-                      className={cn(
-                        "size-1.5 shrink-0 rounded-full",
-                        n.unread ? "bg-accent" : "bg-transparent",
-                      )}
-                    />
-                    <span className="text-sm font-medium text-foreground">{n.title}</span>
-                    <span className="ml-auto text-[11px] text-muted-foreground">{n.time}</span>
-                  </div>
-                  <span className="pl-3.5 text-xs text-muted-foreground">{n.body}</span>
-                </DropdownMenuItem>
-              ))}
+              {notifications.length === 0 ? (
+                <p className="px-2 py-6 text-center text-xs text-muted-foreground">
+                  No notifications yet. Complete a mission to get started.
+                </p>
+              ) : (
+                notifications.slice(0, 5).map((n) => (
+                  <DropdownMenuItem key={n.id} className="flex flex-col items-start gap-0.5 py-2.5">
+                    <div className="flex w-full items-center gap-2">
+                      <span
+                        className={cn(
+                          "size-1.5 shrink-0 rounded-full",
+                          n.unread ? "bg-accent" : "bg-transparent",
+                        )}
+                      />
+                      <span className="text-sm font-medium text-foreground">{n.title}</span>
+                      <span className="ml-auto text-[11px] text-muted-foreground">{n.time}</span>
+                    </div>
+                    <span className="pl-3.5 text-xs text-muted-foreground">{n.body}</span>
+                  </DropdownMenuItem>
+                ))
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
 

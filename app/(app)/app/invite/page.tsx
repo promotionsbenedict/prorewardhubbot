@@ -1,6 +1,6 @@
 import type { Metadata } from "next"
 import { InviteContent } from "@/components/dashboard/invite-content"
-import { getDashboardData } from "@/lib/dashboard"
+import { getDashboardData, getReferralData } from "@/lib/dashboard"
 
 export const metadata: Metadata = {
   title: "Invite",
@@ -8,6 +8,6 @@ export const metadata: Metadata = {
 }
 
 export default async function InvitePage() {
-  const { user } = await getDashboardData()
-  return <InviteContent referralCode={user.referralCode} />
+  const [{ user }, { referrals, stats }] = await Promise.all([getDashboardData(), getReferralData()])
+  return <InviteContent referralCode={user.referralCode} referrals={referrals} stats={stats} />
 }

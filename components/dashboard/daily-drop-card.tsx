@@ -1,7 +1,7 @@
 import { CalendarDays, Zap } from "lucide-react"
 import { MissionCard } from "@/components/dashboard/mission-card"
 import { Progress } from "@/components/ui/progress"
-import { dailyDrop } from "@/lib/data"
+import { dailyDropMeta } from "@/lib/data"
 import type { Mission } from "@/lib/types"
 
 export function DailyDropCard({ missions }: { missions: Mission[] }) {
@@ -17,12 +17,12 @@ export function DailyDropCard({ missions }: { missions: Mission[] }) {
           <div>
             <span className="inline-flex items-center gap-1.5 rounded-full bg-background/70 px-2.5 py-1 text-xs font-medium text-muted-foreground">
               <CalendarDays className="size-3.5" />
-              {dailyDrop.date}
+              {dailyDropMeta.date}
             </span>
             <h2 className="mt-3 font-display text-xl font-bold tracking-tight text-foreground sm:text-2xl">
-              {dailyDrop.title}
+              {dailyDropMeta.title}
             </h2>
-            <p className="mt-1 text-sm text-muted-foreground">{dailyDrop.subtitle}</p>
+            <p className="mt-1 text-sm text-muted-foreground">{dailyDropMeta.subtitle}</p>
           </div>
           <span className="hidden shrink-0 rounded-2xl bg-accent/15 p-3 text-accent sm:grid sm:place-items-center">
             <Zap className="size-6" />
@@ -43,7 +43,7 @@ export function DailyDropCard({ missions }: { missions: Mission[] }) {
       </div>
 
       <div className="flex flex-col gap-3 p-4 sm:p-5">
-        {dailyDrop.missions.map((m) => (
+        {missions.map((m) => (
           <MissionCard key={m.id} mission={m} />
         ))}
       </div>

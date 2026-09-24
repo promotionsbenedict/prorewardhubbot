@@ -5,13 +5,14 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { Loader2 } from "lucide-react"
 import { authClient } from "@/lib/auth-client"
+import { claimReferral } from "@/app/actions/dashboard"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 
 type Mode = "sign-in" | "sign-up"
 
-export function AuthForm({ mode }: { mode: Mode }) {
+export function AuthForm({ mode, referralCode }: { mode: Mode; referralCode?: string }) {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -40,6 +41,13 @@ export function AuthForm({ mode }: { mode: Mode }) {
         if (error) {
           setError(error.message || "Could not create your account.")
           return
+        }
+        if (referralCode) {
+          try {
+            await claimReferral(referralCode)
+          } catch {
+            // A failed referral link should never block account creation.
+          }
         }
       } else {
         const { error } = await authClient.signIn.email({ email, password })

@@ -1,34 +1,10 @@
 import Link from "next/link"
-import { ArrowRight, Clock, Flame, Gift, Sparkles, Timer, Trophy, Users } from "lucide-react"
+import { ArrowRight, Clock, Flame, Gift, Sparkles, Trophy, Users } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
-import { communityDrop, featuredMission, streakMilestones, surpriseDrop } from "@/lib/data"
-import type { ActivityItem } from "@/lib/types"
+import { featuredMission } from "@/lib/data"
+import type { ActivityItem, CommunityDrop, StreakMilestone } from "@/lib/types"
 import { cn } from "@/lib/utils"
-
-export function SurpriseDropBanner() {
-  if (!surpriseDrop.active) return null
-  return (
-    <div className="flex items-center gap-4 rounded-2xl border border-accent/40 bg-gradient-to-r from-accent/15 to-primary/10 p-4">
-      <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-accent/20 text-accent">
-        <Sparkles className="size-5" />
-      </span>
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <p className="text-sm font-semibold text-foreground">{surpriseDrop.title}</p>
-          <span className="inline-flex items-center gap-1 rounded-full bg-accent/20 px-2 py-0.5 text-[11px] font-semibold text-accent">
-            <Timer className="size-3" />
-            {surpriseDrop.minutesLeft}m left
-          </span>
-        </div>
-        <p className="mt-0.5 truncate text-xs text-muted-foreground">{surpriseDrop.description}</p>
-      </div>
-      <Button size="sm" className="shrink-0 rounded-full">
-        +{surpriseDrop.points}
-      </Button>
-    </div>
-  )
-}
 
 export function FeaturedMissionCard() {
   return (
@@ -53,7 +29,7 @@ export function FeaturedMissionCard() {
   )
 }
 
-export function StreakCard({ streak }: { streak: number }) {
+export function StreakCard({ streak, milestones }: { streak: number; milestones: StreakMilestone[] }) {
   return (
     <div className="rounded-2xl border border-border bg-card p-5">
       <div className="flex items-center gap-2">
@@ -62,53 +38,56 @@ export function StreakCard({ streak }: { streak: number }) {
       </div>
       <p className="mt-1 text-xs text-muted-foreground">Hit milestones to unlock bonus rewards.</p>
       <div className="mt-4 space-y-3">
-        {streakMilestones.map((m) => (
-          <div key={m.day} className="flex items-center gap-3">
-            <span
-              className={cn(
-                "grid size-8 shrink-0 place-items-center rounded-full text-xs font-bold",
-                m.reached ? "bg-warning/20 text-warning" : "bg-muted text-muted-foreground",
-              )}
-            >
-              {m.day}
-            </span>
-            <div className="flex-1">
-              <p className="text-sm font-medium text-foreground">{m.label}</p>
-              <p className="text-xs text-muted-foreground">{m.reward}</p>
+        {milestones.map((m) => {
+          const reached = streak >= m.day
+          return (
+            <div key={m.day} className="flex items-center gap-3">
+              <span
+                className={cn(
+                  "grid size-8 shrink-0 place-items-center rounded-full text-xs font-bold",
+                  reached ? "bg-warning/20 text-warning" : "bg-muted text-muted-foreground",
+                )}
+              >
+                {m.day}
+              </span>
+              <div className="flex-1">
+                <p className="text-sm font-medium text-foreground">{m.label}</p>
+                <p className="text-xs text-muted-foreground">{m.reward}</p>
+              </div>
+              {reached && <span className="text-xs font-medium text-success">Reached</span>}
             </div>
-            {m.reached && <span className="text-xs font-medium text-success">Reached</span>}
-          </div>
-        ))}
+          )
+        })}
       </div>
     </div>
   )
 }
 
-export function CommunityDropCard() {
-  const pct = Math.round((communityDrop.current / communityDrop.target) * 100)
+export function CommunityDropCard({ drop }: { drop: CommunityDrop }) {
+  const pct = Math.min(100, Math.round((drop.current / drop.target) * 100))
   return (
     <div className="rounded-2xl border border-border bg-card p-5">
       <div className="flex items-center gap-2">
         <Users className="size-5 text-primary" />
-        <h3 className="font-display text-base font-bold text-foreground">{communityDrop.title}</h3>
+        <h3 className="font-display text-base font-bold text-foreground">{drop.title}</h3>
       </div>
-      <p className="mt-1 text-sm text-muted-foreground">{communityDrop.description}</p>
+      <p className="mt-1 text-sm text-muted-foreground">{drop.description}</p>
       <div className="mt-4 flex items-center gap-3">
         <Progress value={pct} className="h-2 flex-1" />
         <span className="text-sm font-semibold text-foreground">{pct}%</span>
       </div>
       <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
         <span>
-          {communityDrop.current.toLocaleString()} / {communityDrop.target.toLocaleString()} {communityDrop.unit}
+          {drop.current.toLocaleString()} / {drop.target.toLocaleString()} {drop.unit}
         </span>
         <span className="inline-flex items-center gap-1">
           <Clock className="size-3" />
-          {communityDrop.endsIn} left
+          {drop.endsIn} left
         </span>
       </div>
       <div className="mt-4 flex items-center gap-2 rounded-xl bg-muted/60 p-3 text-xs text-muted-foreground">
         <Gift className="size-4 shrink-0 text-accent" />
-        {communityDrop.reward}
+        {drop.reward}
       </div>
     </div>
   )

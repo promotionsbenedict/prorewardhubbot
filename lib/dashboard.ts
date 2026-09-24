@@ -2,17 +2,13 @@ import "server-only"
 
 import { cache } from "react"
 import { headers } from "next/headers"
-import { and, desc, eq, gte } from "drizzle-orm"
+import { and, count, desc, eq, gte, inArray } from "drizzle-orm"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
-import { activityLog, missionCompletion, profile, redemption } from "@/lib/db/schema"
-import {
-  achievements as achievementDefs,
-  dailyDrop,
-  referralStats,
-  rewards as rewardCatalog,
-} from "@/lib/data"
-import type { Achievement, ActivityItem, Mission, Reward } from "@/lib/types"
+import { activityLog, missionCompletion, profile, redemption, user } from "@/lib/db/schema"
+import { communityDrop as communityDropConfig, rewards as rewardCatalog } from "@/lib/data"
+import { getAchievementDefs, getMissionCatalog, type AchievementDef } from "@/lib/catalog"
+import type { Achievement, ActivityItem, CommunityDrop, Mission, NotificationItem, Referral, Reward } from "@/lib/types"
 
 export type LiveUser = {
   id: string
@@ -76,29 +72,38 @@ function clampScore(n: number): number {
   return Math.max(0, Math.min(100, Math.round(n)))
 }
 
-function deriveAchievements(stats: {
-  completions: number
-  streak: number
-  activeReferrals: number
-}): Achievement[] {
-  const test: Record<string, { unlocked: boolean; progress?: number; goal?: number }> = {
-    a1: { unlocked: stats.completions >= 1 },
-    a2: { unlocked: stats.streak >= 3 },
-    a3: { unlocked: stats.streak >= 7, progress: Math.min(stats.streak, 7), goal: 7 },
-    a4: { unlocked: stats.activeReferrals >= 1 },
-    a5: { unlocked: stats.activeReferrals >= 5, progress: Math.min(stats.activeReferrals, 5), goal: 5 },
-    a6: { unlocked: true },
-    a7: { unlocked: stats.streak >= 30, progress: Math.min(stats.streak, 30), goal: 30 },
-    a8: { unlocked: stats.completions >= 100, progress: Math.min(stats.completions, 100), goal: 100 },
+type AchievementStats = { completions: number; streak: number; activeReferrals: number }
+
+// Maps an achievement's metric onto the member's current progress value.
+function metricValue(metric: string, stats: AchievementStats): number {
+  switch (metric) {
+    case "streak":
+      return stats.streak
+    case "referrals":
+      return stats.activeReferrals
+    case "drops":
+    case "missions":
+      return stats.completions
+    default:
+      return stats.completions
   }
-  return achievementDefs.map((def) => {
-    const t = test[def.id]
-    if (!t) return def
+}
+
+function deriveAchievements(defs: AchievementDef[], stats: AchievementStats): Achievement[] {
+  return defs.map((def) => {
+    const current = metricValue(def.metric, stats)
+    // "custom" achievements (e.g. Early Member) unlock for everyone.
+    const unlocked = def.metric === "custom" ? true : current >= def.goal
+    const showProgress = !unlocked && def.goal > 1
     return {
-      ...def,
-      unlocked: t.unlocked,
-      progress: t.unlocked ? undefined : t.progress,
-      goal: t.unlocked ? undefined : t.goal,
+      id: def.id,
+      name: def.title,
+      description: def.description,
+      unlocked,
+      progress: showProgress ? Math.min(current, def.goal) : undefined,
+      goal: showProgress ? def.goal : undefined,
+      shareable: true,
+      points: def.points || undefined,
     }
   })
 }
@@ -133,25 +138,28 @@ export const getDashboardData = cache(async (): Promise<DashboardData> => {
 
   const start = startOfToday()
 
-  const [allCompletions, redemptions, activityRows] = await Promise.all([
-    db.select().from(missionCompletion).where(eq(missionCompletion.userId, sessionUser.id)),
-    db.select().from(redemption).where(eq(redemption.userId, sessionUser.id)),
-    db
-      .select()
-      .from(activityLog)
-      .where(eq(activityLog.userId, sessionUser.id))
-      .orderBy(desc(activityLog.createdAt))
-      .limit(12),
-  ])
+  const [allCompletions, redemptions, activityRows, activeReferrals, missionCatalog, achievementDefs] =
+    await Promise.all([
+      db.select().from(missionCompletion).where(eq(missionCompletion.userId, sessionUser.id)),
+      db.select().from(redemption).where(eq(redemption.userId, sessionUser.id)),
+      db
+        .select()
+        .from(activityLog)
+        .where(eq(activityLog.userId, sessionUser.id))
+        .orderBy(desc(activityLog.createdAt))
+        .limit(12),
+      countActiveReferrals(sessionUser.id),
+      getMissionCatalog(),
+      getAchievementDefs(),
+    ])
 
   const totalCompletions = allCompletions.length
   const completedTodayIds = new Set(
     allCompletions.filter((c) => c.createdAt >= start).map((c) => c.missionId),
   )
   const redeemedIds = new Set(redemptions.map((r) => r.rewardId))
-  const activeReferrals = referralStats.active
 
-  const missions: Mission[] = dailyDrop.missions.map((m) => {
+  const missions: Mission[] = missionCatalog.map((m) => {
     const done = completedTodayIds.has(m.id)
     return { ...m, status: done ? "completed" : "todo", cta: done ? "Done" : m.cta }
   })
@@ -192,6 +200,139 @@ export const getDashboardData = cache(async (): Promise<DashboardData> => {
     missions,
     activity,
     rewards,
-    achievements: deriveAchievements({ completions: totalCompletions, streak: prof.streak, activeReferrals }),
+    achievements: deriveAchievements(achievementDefs, {
+      completions: totalCompletions,
+      streak: prof.streak,
+      activeReferrals,
+    }),
   }
+})
+
+// --- Referrals -------------------------------------------------------------
+
+export type ReferralStats = {
+  total: number
+  active: number
+  qualified: number
+  pointsEarned: number
+  missionProgress: { current: number; goal: number; label: string }
+}
+
+export type ReferralData = {
+  referrals: Referral[]
+  stats: ReferralStats
+}
+
+// Points attributed to the referrer per referral, by the tier the referred
+// member has reached. These mirror the amounts credited in the mission action.
+const REFERRAL_TIER_POINTS = { Joined: 100, Active: 300, Qualified: 500 } as const
+
+async function loadReferralUsage(referrerUserId: string) {
+  const referred = await db
+    .select({ userId: profile.userId, name: user.name, createdAt: user.createdAt })
+    .from(profile)
+    .innerJoin(user, eq(profile.userId, user.id))
+    .where(eq(profile.referredBy, referrerUserId))
+
+  if (referred.length === 0) {
+    return { referred, byUser: new Map<string, { total: number; today: number }>() }
+  }
+
+  const ids = referred.map((r) => r.userId)
+  const completions = await db
+    .select({ userId: missionCompletion.userId, createdAt: missionCompletion.createdAt })
+    .from(missionCompletion)
+    .where(inArray(missionCompletion.userId, ids))
+
+  const start = startOfToday()
+  const byUser = new Map<string, { total: number; today: number }>()
+  for (const id of ids) byUser.set(id, { total: 0, today: 0 })
+  for (const c of completions) {
+    const entry = byUser.get(c.userId)
+    if (!entry) continue
+    entry.total += 1
+    if (c.createdAt >= start) entry.today += 1
+  }
+  return { referred, byUser }
+}
+
+async function countActiveReferrals(referrerUserId: string): Promise<number> {
+  const { byUser } = await loadReferralUsage(referrerUserId)
+  let active = 0
+  for (const v of byUser.values()) if (v.total >= 1) active += 1
+  return active
+}
+
+export const getReferralData = cache(async (): Promise<ReferralData> => {
+  const sessionUser = await requireUser()
+  await ensureProfile(sessionUser.id, sessionUser.name)
+  const { referred, byUser } = await loadReferralUsage(sessionUser.id)
+
+  const referrals: Referral[] = referred.map((r) => {
+    const usage = byUser.get(r.userId) ?? { total: 0, today: 0 }
+    const status: Referral["status"] = usage.total >= 3 ? "Qualified" : usage.total >= 1 ? "Active" : "Joined"
+    return {
+      id: r.userId,
+      name: r.name,
+      status,
+      joinedAgo: relativeTime(r.createdAt),
+      pointsEarned: REFERRAL_TIER_POINTS[status],
+    }
+  })
+
+  const active = referrals.filter((r) => r.status === "Active" || r.status === "Qualified").length
+  const qualified = referrals.filter((r) => r.status === "Qualified").length
+  const pointsEarned = referrals.reduce((sum, r) => sum + r.pointsEarned, 0)
+  let current = 0
+  for (const v of byUser.values()) if (v.today >= 1) current += 1
+
+  return {
+    referrals,
+    stats: {
+      total: referrals.length,
+      active,
+      qualified,
+      pointsEarned,
+      missionProgress: { current, goal: 2, label: "Get 2 friends to complete today's Drop" },
+    },
+  }
+})
+
+// --- Notifications ---------------------------------------------------------
+
+const ICON_TO_KIND: Record<string, NotificationItem["kind"]> = {
+  points: "drop",
+  xp: "drop",
+  streak: "drop",
+  reward: "reward",
+  referral: "referral",
+  achievement: "system",
+}
+
+export const getNotifications = cache(async (): Promise<NotificationItem[]> => {
+  const sessionUser = await requireUser()
+  const rows = await db
+    .select()
+    .from(activityLog)
+    .where(eq(activityLog.userId, sessionUser.id))
+    .orderBy(desc(activityLog.createdAt))
+    .limit(8)
+
+  const dayAgo = Date.now() - 86_400_000
+  return rows.map((r) => ({
+    id: String(r.id),
+    title: r.title,
+    body: r.amount ? `${r.meta} · ${r.amount}` : r.meta,
+    time: relativeTime(r.createdAt),
+    unread: r.createdAt.getTime() >= dayAgo,
+    kind: ICON_TO_KIND[r.icon] ?? "system",
+  }))
+})
+
+// --- Community drop --------------------------------------------------------
+
+export const getCommunityDrop = cache(async (): Promise<CommunityDrop> => {
+  const rows = await db.select({ value: count() }).from(missionCompletion)
+  const current = Number(rows[0]?.value ?? 0)
+  return { ...communityDropConfig, current }
 })

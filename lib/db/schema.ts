@@ -75,6 +75,7 @@ export const profile = pgTable("profile", {
   streak: integer("streak").notNull().default(0),
   telegramConnected: boolean("telegramConnected").notNull().default(false),
   referralCode: text("referralCode").notNull(),
+  referredBy: text("referredBy"),
   lastCheckIn: timestamp("lastCheckIn"),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
 })
@@ -112,6 +113,52 @@ export const withdrawal = pgTable("withdrawal", {
   note: text("note"),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
   resolvedAt: timestamp("resolvedAt"),
+})
+
+// --- Catalog tables --------------------------------------------------------
+// Admin-managed definitions (previously hardcoded in lib/data.ts). These are
+// global, not per-user, and are edited from the admin panel.
+
+// Daily-drop / standalone mission definitions.
+export const mission = pgTable("mission", {
+  id: text("id").primaryKey(),
+  type: text("type").notNull().default("custom"),
+  title: text("title").notNull(),
+  description: text("description").notNull(),
+  points: integer("points").notNull().default(0),
+  xp: integer("xp").notNull().default(0),
+  required: boolean("required").notNull().default(false),
+  cta: text("cta").notNull().default("Start"),
+  verification: text("verification").notNull().default("instant"),
+  durationSeconds: integer("durationSeconds"),
+  sortOrder: integer("sortOrder").notNull().default(0),
+  active: boolean("active").notNull().default(true),
+  createdAt: timestamp("createdAt").notNull().defaultNow(),
+})
+
+// Achievement definitions surfaced on the achievements page.
+export const achievement = pgTable("achievement", {
+  id: text("id").primaryKey(),
+  title: text("title").notNull(),
+  description: text("description").notNull(),
+  icon: text("icon").notNull().default("Trophy"),
+  points: integer("points").notNull().default(0),
+  goal: integer("goal").notNull().default(1),
+  metric: text("metric").notNull().default("points"),
+  sortOrder: integer("sortOrder").notNull().default(0),
+  active: boolean("active").notNull().default(true),
+  createdAt: timestamp("createdAt").notNull().defaultNow(),
+})
+
+// Streak-milestone definitions rendered on the home streak widget.
+export const streakMilestone = pgTable("streak_milestone", {
+  id: text("id").primaryKey(),
+  day: integer("day").notNull(),
+  reward: integer("reward").notNull().default(0),
+  label: text("label").notNull(),
+  sortOrder: integer("sortOrder").notNull().default(0),
+  active: boolean("active").notNull().default(true),
+  createdAt: timestamp("createdAt").notNull().defaultNow(),
 })
 
 // Append-only feed of notable events for the activity list.

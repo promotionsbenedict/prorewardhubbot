@@ -13,9 +13,15 @@ export const metadata: Metadata = {
   description: "Create your free Pro Reward Hub account and start earning.",
 }
 
-export default async function SignupPage() {
+export default async function SignupPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ ref?: string }>
+}) {
   const session = await auth.api.getSession({ headers: await headers() })
   if (session?.user) redirect("/app")
+
+  const { ref } = await searchParams
 
   return (
     <AuthShell
@@ -37,7 +43,7 @@ export default async function SignupPage() {
           <span className="text-xs text-muted-foreground">or</span>
           <Separator className="flex-1" />
         </div>
-        <AuthForm mode="sign-up" />
+        <AuthForm mode="sign-up" referralCode={ref} />
       </div>
     </AuthShell>
   )
